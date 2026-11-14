@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0e10">
+<title>Insta Export — upload-ready video encoder</title>
+<meta name="description" content="Turn any video into an Instagram-ready master, on your device. Auto settings, manual control, nothing uploaded.">
+<style>
+:root{
+  --bg:#0d0e10; --panel:#16181b; --panel2:#1d2024; --line:#2a2e33; --line2:#3a3f46;
+  --text:#eeeef0; --muted:#9aa0a8; --dim:#6d737b;
+  --accent:#ff4d6d; --accent-ink:#1a0308; --accent-soft:rgba(255,77,109,.13);
+  --ok:#4cd28a; --warn:#ffb648; --bad:#ff6b5e; --info:#7db4ff;
+  --r:14px; --mono:ui-monospace,"SF Mono","Cascadia Mono",Consolas,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:0 16px calc(32px + env(safe-area-inset-bottom));}
+.wrap{max-width:1120px;margin:0 auto}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:22px 0 18px}
+.brand{font-size:20px;font-weight:700;letter-spacing:-.02em}
+.brand i{font-style:normal;color:var(--accent)}
+.tag{color:var(--muted);font-size:13px}
+.tag b{color:var(--ok);font-weight:600}
+h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 12px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:14px}
+.hidden{display:none!important}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* drop zone */
+#drop{border:1.5px dashed var(--line2);border-radius:18px;padding:54px 20px;text-align:center;cursor:pointer;
+  background:radial-gradient(600px 220px at 50% 0,rgba(255,77,109,.08),transparent 70%),var(--panel);transition:border-color .15s,background-color .15s}
+#drop:hover,#drop.over,#drop:focus-visible{border-color:var(--accent);outline:none}
+#drop h1{font-size:clamp(24px,5vw,36px);line-height:1.15;letter-spacing:-.03em;margin:0 0 10px;text-wrap:balance}
+#drop p{color:var(--muted);margin:0 auto 22px;max-width:520px;text-wrap:pretty}
+.btn{appearance:none;border:0;border-radius:12px;min-height:48px;padding:0 22px;font:600 15px/1 inherit;font-family:inherit;cursor:pointer;
+  background:var(--accent);color:var(--accent-ink);display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+.btn:hover{filter:brightness(1.08)} .btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line2)}
+.btn.ghost:hover{border-color:var(--muted);filter:none}
+.btn.wide{width:100%}
+.caps{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:99px;padding:3px 10px;color:var(--muted)}
+.chip.ok{color:var(--ok);border-color:rgba(76,210,138,.35)} .chip.bad{color:var(--bad);border-color:rgba(255,107,94,.35)}
+
+/* workspace */
+#work{display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:920px){#work{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-items:start}
+  #left{position:sticky;top:14px}}
+.filebar{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-bottom:14px}
+.fname{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fmeta{color:var(--muted);font-size:13px}
+.link{background:none;border:0;color:var(--accent);font:inherit;font-weight:600;cursor:pointer;padding:8px 0;white-space:nowrap}
+
+.stage{background:#000;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:10px;margin-bottom:6px}
+.frame{background:#000;outline:1px solid var(--line2);max-height:46vh;max-width:100%;overflow:hidden;position:relative}
+.frame video{width:100%;height:100%;display:block}
+.framecap{color:var(--dim);font-size:12px;text-align:center;margin-bottom:14px}
+
+.checks{list-style:none;margin:0;padding:0}
+.checks li{display:grid;grid-template-columns:18px 1fr auto;gap:4px 10px;padding:9px 0;border-top:1px solid var(--line);align-items:baseline}
+.checks li:first-child{border-top:0}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:7px;justify-self:center;background:var(--dim)}
+.ok .dot{background:var(--ok)} .warn .dot{background:var(--warn)} .bad .dot{background:var(--bad)} .info .dot{background:var(--info)}
+.checks .k{color:var(--muted)} .checks .v{text-align:right;font-family:var(--mono);font-size:13px;overflow-wrap:anywhere}
+.checks .n{grid-column:2/4;color:var(--muted);font-size:13px}
+.warn .n{color:var(--warn)} .bad .n{color:var(--bad)}
+
+/* recommendation */
+.rec{border-color:rgba(255,77,109,.4);background:linear-gradient(180deg,var(--accent-soft),transparent 120px),var(--panel)}
+.recline{font-family:var(--mono);font-size:clamp(15px,3.6vw,19px);font-weight:600;line-height:1.45;margin:0 0 10px;overflow-wrap:anywhere}
+.why{margin:0;padding-left:18px;color:var(--muted);font-size:14px}
+.why li{margin:3px 0}
+.why b{color:var(--text);font-weight:600}
+
+/* controls */
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px;margin-bottom:16px}
+.seg button{border:0;background:none;color:var(--muted);font:600 14px inherit;font-family:inherit;min-height:40px;border-radius:9px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--panel2);color:var(--text);box-shadow:0 0 0 1px var(--line2)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:480px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px;min-width:0}
+.f.full{grid-column:1/-1}
+.f label,.f .lab{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.f .lab b{color:var(--text);font-family:var(--mono);font-weight:600}
+select,input[type=number],input[type=text]{width:100%;min-height:44px;background:var(--bg);color:var(--text);border:1px solid var(--line2);
+  border-radius:10px;padding:0 12px;font:inherit;font-size:16px}
+select:disabled,input:disabled{opacity:.6}
+select:focus-visible,input:focus-visible,button:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=range]{width:100%;accent-color:var(--accent);height:32px;margin:0}
+.hint{font-size:12px;color:var(--dim)}
+.check{display:flex;gap:10px;align-items:center;min-height:44px;color:var(--text);font-size:14px}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+.notes{list-style:none;margin:14px 0 0;padding:0;font-size:13px}
+.notes li{padding:8px 12px;border-radius:9px;margin-top:6px;background:rgba(255,182,72,.09);color:var(--warn)}
+.notes li.bad{background:rgba(255,107,94,.1);color:var(--bad)}
+.notes li.info{background:rgba(125,180,255,.09);color:var(--info)}
+.sum{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px;align-items:baseline;margin:16px 0 12px;color:var(--muted);font-size:14px}
+.sum b{color:var(--text);font-family:var(--mono)}
+
+/* progress */
+.bar{height:10px;border-radius:99px;background:var(--bg);border:1px solid var(--line);overflow:hidden;margin:12px 0 8px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);border-radius:99px;transition:width .2s linear}
+.prow{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted)}
+.pct{font:700 30px/1 var(--mono);color:var(--text)}
+.done h3{margin:0 0 4px;font-size:20px;letter-spacing:-.01em}
+.done p{margin:0 0 14px;color:var(--muted)}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row .btn{flex:1 1 150px}
+.err{color:var(--bad);background:rgba(255,107,94,.1);border-radius:10px;padding:12px;margin-top:12px;font-size:14px;overflow-wrap:anywhere}
+
+details{border-top:1px solid var(--line);padding:12px 0 0;margin-top:14px}
+details:first-of-type{margin-top:0;border-top:0;padding-top:0}
+summary{cursor:pointer;font-weight:600;min-height:32px}
+details ol,details ul{color:var(--muted);padding-left:20px;margin:8px 0 4px;font-size:14px}
+details li{margin:5px 0} details b{color:var(--text)}
+footer{color:var(--dim);font-size:12px;text-align:center;padding:18px 0 0}
+footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Insta<i>Export</i></div>
+    <div class="tag"><b>●</b> Runs on your device — your video is never uploaded</div>
+  </header>
+
+  <section id="drop" tabindex="0" role="button" aria-label="Choose a video">
+    <h1>Any video in.<br>Instagram-ready master out.</h1>
+    <p>Drop a 4K, 1080p, phone or camera clip. It gets analysed, then exported with the settings Instagram keeps the most quality from.</p>
+    <span class="btn">Choose video</span>
+    <div class="caps" id="caps"></div>
+    <input id="file" type="file" accept="video/*,.mkv,.mov,.mp4,.webm,.m4v,.ts" hidden>
+  </section>
+  <div id="loadErr" class="err hidden"></div>
+
+  <main id="work" class="hidden">
+    <div id="left">
+      <div class="panel">
+        <div class="filebar">
+          <div style="min-width:0"><div class="fname" id="fname"></div><div class="fmeta" id="fmeta"></div></div>
+          <button class="link" id="change">Change video</button>
+        </div>
+        <div class="stage"><div class="frame" id="frame"><video id="pv" muted playsinline controls preload="metadata"></video></div></div>
+        <div class="framecap" id="framecap"></div>
+        <h2>Your video vs Instagram's spec</h2>
+        <ul class="checks" id="checks"></ul>
+      </div>
+    </div>
+
+    <div id="right">
+      <div class="panel rec">
+        <h2>Recommended for this video</h2>
+        <p class="recline" id="recline"></p>
+        <ul class="why" id="why"></ul>
+      </div>
+
+      <div class="panel" id="settings">
+        <h2>Export settings</h2>
+        <div class="seg" role="group" aria-label="Settings mode">
+          <button id="mAuto" aria-pressed="true">Auto (recommended)</button>
+          <button id="mManual" aria-pressed="false">Manual</button>
+        </div>
+        <div class="grid">
+          <div class="f full"><label for="sMode">Method</label>
+            <select id="sMode"><option value="encode">Re-encode to Instagram spec</option><option value="rewrap">Lossless rewrap (no re-encode)</option></select></div>
+          <div class="f enc"><label for="sPreset">Format</label>
+            <select id="sPreset">
+              <option value="auto">Match my video</option>
+              <option value="reel">Reel / Story — 9:16</option>
+              <option value="p34">Portrait — 3:4</option>
+              <option value="p45">Portrait — 4:5</option>
+              <option value="sq">Square — 1:1</option>
+              <option value="land">Landscape — 16:9</option>
+              <option value="orig">Original shape</option>
+            </select></div>
+          <div class="f enc"><label for="sTier">Resolution</label>
+            <select id="sTier">
+              <option value="720">720p</option>
+              <option value="1080">1080p — what Instagram shows</option>
+              <option value="1440">1440p — oversampled</option>
+              <option value="2160">4K — Instagram will shrink it</option>
+            </select></div>
+          <div class="f enc"><label for="sFit">If the shape differs</label>
+            <select id="sFit"><option value="cover">Crop to fill</option><option value="contain">Fit with black bars</option></select></div>
+          <div class="f enc"><label for="sFps">Frame rate</label>
+            <select id="sFps"></select></div>
+          <div class="f enc"><label for="sCodec">Video codec</label>
+            <select id="sCodec"><option value="avc">H.264 — safest</option><option value="hevc">H.265 / HEVC</option></select></div>
+          <div class="f enc"><label for="sKf">Keyframe every</label>
+            <select id="sKf"><option value="1">1 second</option><option value="2">2 seconds</option><option value="4">4 seconds</option></select></div>
+          <div class="f full enc">
+            <div class="lab"><span>Video bitrate</span><b id="vbrVal"></b></div>
+            <input id="sVbr" type="range" min="2" max="50" step="0.5" aria-label="Video bitrate in megabits per second">
+            <div class="hint" id="vbrHint"></div>
+          </div>
+          <div class="f enc"><label for="sAudio">Audio</label>
+            <select id="sAudio">
+              <option value="auto">Auto — keep original if possible</option>
+              <option value="128">AAC 128 kbps</option><option value="192">AAC 192 kbps</option>
+              <option value="256">AAC 256 kbps</option><option value="320">AAC 320 kbps</option>
+              <option value="none">Remove audio</option>
+            </select></div>
+          <div class="f enc"><label for="sHw">Encoder</label>
+            <select id="sHw"><option value="no-preference">Automatic</option><option value="prefer-hardware">Hardware (GPU)</option><option value="prefer-software">Software (slower)</option></select></div>
+          <label class="check full f enc"><span style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="sUp"> Upscale smaller videos to the chosen resolution</span></label>
+        </div>
+
+        <details id="trimBox">
+          <summary>Trim (optional)</summary>
+          <div class="grid" style="margin-top:10px">
+            <div class="f"><label for="tStart">Start (seconds)</label><input id="tStart" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0"></div>
+            <div class="f"><label for="tEnd">End (seconds)</label><input id="tEnd" type="number" min="0" step="0.1" inputmode="decimal"></div>
+          </div>
+        </details>
+
+        <ul class="notes" id="notes"></ul>
+        <div class="sum"><span>Output <b id="sumOut"></b></span><span>≈ <b id="sumSize"></b></span></div>
+        <button class="btn wide" id="go">Export for Instagram</button>
+        <div id="runErr" class="err hidden"></div>
+      </div>
+
+      <div class="panel hidden" id="prog">
+        <h2>Exporting</h2>
+        <div class="prow"><span class="pct" id="pct">0%</span><span id="pStage">Starting…</span></div>
+        <div class="bar"><i id="pbar"></i></div>
+        <div class="prow"><span id="pEta"></span><span id="pSpeed"></span></div>
+        <p class="hint" style="margin:10px 0 14px">Keep this tab open and in front until it finishes — phones pause background tabs.</p>
+        <button class="btn ghost wide" id="cancel">Cancel</button>
+      </div>
+
+      <div class="panel hidden done" id="done">
+        <h3>Ready to upload</h3>
+        <p id="doneSub"></p>
+        <div class="row">
+          <a class="btn" id="dl">Save video</a>
+          <button class="btn ghost" id="share">Share…</button>
+          <button class="btn ghost" id="again">Change settings</button>
+        </div>
+        <h2 style="margin-top:20px">Checked output file</h2>
+        <ul class="checks" id="outChecks"></ul>
+      </div>
+
+      <div class="panel">
+        <h2>How to keep the quality after export</h2>
+        <details open>
+          <summary>Before you post</summary>
+          <ol>
+            <li>In Instagram: <b>Settings → Media quality → Upload at highest quality</b> — turn it on. Without it, Instagram compresses harder on weak connections.</li>
+            <li>Move the file to your phone <b>without a chat app</b>. WhatsApp and Telegram (as a normal video) recompress it. Use Google Drive, AirDrop, a cable, or open this page on the phone itself.</li>
+            <li>Upload on <b>strong Wi‑Fi</b> and leave the app open until it finishes.</li>
+            <li>Skip Instagram's own filters and edits on this clip — they trigger another render.</li>
+          </ol>
+        </details>
+        <details>
+          <summary>Why not just upload 4K?</summary>
+          <ul>
+            <li>Instagram re-encodes every upload and plays video back at about <b>1080 pixels wide</b>. Its published limit is 1920 pixels across.</li>
+            <li>A 4K file gets shrunk by Instagram's fast scaler. Shrinking it here first, with a high-quality scaler and plenty of bitrate, hands Instagram a cleaner picture to compress.</li>
+            <li>So the "4K look" on Instagram comes from a sharp 1080p master, not from the pixel count of the upload.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>The spec this tool exports to</summary>
+          <ul>
+            <li><b>Container</b> MP4, index at the front of the file (fast start)</li>
+            <li><b>Video</b> H.264 or HEVC, progressive, 4:2:0, 23–60 fps, up to 1920 px wide, VBR up to 25 Mbps</li>
+            <li><b>Audio</b> AAC, up to 48 kHz, mono or stereo</li>
+            <li><b>Reels</b> 3 seconds to 15 minutes, 9:16 recommended. <b>Stories</b> up to 60 seconds.</li>
+          </ul>
+          <p class="hint">From Meta's Instagram Platform documentation (Reel specifications).</p>
+        </details>
+      </div>
+    </div>
+  </main>
+
+  <footer>Not affiliated with Instagram or Meta. Encoding by <a href="https://mediabunny.dev" target="_blank" rel="noopener">Mediabunny</a> using your browser's video encoder.</footer>
+</div>
+
+<script src="vendor/mediabunny.min.js"></script>
+<script>
+(() => {
+'use strict';
+const MB = window.Mediabunny;
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+/* ---------- constants ---------- */
+const IG = { maxW: 1920, minFps: 23, maxFps: 60, maxVbr: 25e6, minDur: 3, maxDur: 900, apiMaxBytes: 300 * 1024 * 1024, maxSr: 48000 };
+const STD = [
+  { id: 'reel', r: 9 / 16, label: '9:16' }, { id: 'p34', r: 3 / 4, label: '3:4' }, { id: 'p45', r: 4 / 5, label: '4:5' },
+  { id: 'sq', r: 1, label: '1:1' }, { id: 'land', r: 16 / 9, label: '16:9' },
+];
+const FPS_STD = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 90, 100, 120, 240];
+const VNAME = { avc: 'H.264', hevc: 'H.265 (HEVC)', vp9: 'VP9', vp8: 'VP8', av1: 'AV1' };
+const EFF = { avc: 1, hevc: 0.7, vp9: 0.72, av1: 0.62, vp8: 1.15 };
+
+/* ---------- helpers ---------- */
+const even = x => Math.max(2, Math.round(x / 2) * 2);
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const fmtBytes = b => b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(b >= 104857600 ? 0 : 1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+const fmtMbps = b => b == null ? '—' : b >= 1e6 ? (b / 1e6).toFixed(b >= 1e7 ? 1 : 2).replace(/\.?0+$/, '') + ' Mbps' : Math.round(b / 1e3) + ' kbps';
+const fmtDur = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; return m ? `${m}m ${r.toFixed(0).padStart(2, '0')}s` : `${r.toFixed(1)}s`; };
+const fmtFps = f => (Math.abs(f - Math.round(f)) < 0.005 ? String(Math.round(f)) : f.toFixed(3).replace(/0+$/, '')) ;
+const snapFps = f => { const n = FPS_STD.reduce((a, b) => Math.abs(b - f) < Math.abs(a - f) ? b : a); return Math.abs(n - f) / f < 0.012 ? n : Math.round(f * 100) / 100; };
+const ratioLabel = (w, h) => { const r = w / h; const s = STD.find(s => Math.abs(Math.log(r / s.r)) < 0.012); return s ? s.label : r.toFixed(2) + ':1'; };
+const audioName = c => !c ? 'Unknown' : c === 'aac' ? 'AAC' : c.startsWith('pcm') ? 'PCM' : c.toUpperCase();
+
+/* ---------- state ---------- */
+let info = null, file = null, R = null, conversion = null, outBlob = null, outUrl = null, pvUrl = null, wake = null;
+const caps = { video: false, avc: false, hevc: false, aac: false, aacMax: 0 };
+const S = { auto: true, mode: 'auto', preset: 'auto', tier: 1080, fit: 'cover', upscale: false, fps: 'auto', codec: 'avc', vbr: 'auto', kf: 2, hw: 'no-preference', audio: 'auto' };
+
+/* ---------- capability check ---------- */
+async function detectCaps() {
+  const box = $('caps');
+  if (!MB) { box.append(el('span', 'chip bad', 'Encoder library failed to load')); return; }
+  caps.video = 'VideoEncoder' in window && 'VideoDecoder' in window;
+  if (caps.video) {
+    const t = (p) => p.catch(() => false);
+    [caps.avc, caps.hevc, caps.aac] = await Promise.all([
+      t(MB.canEncodeVideo('avc', { width: 1080, height: 1920 })),
+      t(MB.canEncodeVideo('hevc', { width: 1080, height: 1920 })),
+      t(MB.canEncodeAudio('aac')),
+    ]);
+  }
+  if (caps.aac) { // encoders differ in their ceiling (Windows stops at 192 kbps)
+    for (const k of [320, 256, 192, 160, 128, 96]) {
+      if (await MB.canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: 48000, quality: new MB.Quality({ bitrate: k * 1e3 }) }).catch(() => false)) { caps.aacMax = k; break; }
+    }
+    if (!caps.aacMax) caps.aac = false;
+  }
+  const chip = (ok, yes, no) => box.append(el('span', 'chip ' + (ok ? 'ok' : 'bad'), ok ? yes : no));
+  if (!caps.video || !caps.avc) {
+    chip(false, '', 'This browser can\'t encode video — use Chrome, Edge or a recent Safari');
+  } else {
+    chip(true, 'H.264 encoder ready');
+    chip(caps.hevc, 'HEVC encoder ready', 'No HEVC encoder on this device');
+    chip(caps.aac, 'AAC audio ready', 'No AAC audio encoder here');
+  }
+  $('sCodec').querySelector('[value=hevc]').disabled = !caps.hevc;
+}
+
+/* ---------- MP4 fast-start probe ---------- */
+async function moovFirst(blob) {
+  try {
+    let off = 0;
+    for (let i = 0; i < 64 && off + 8 <= blob.size; i++) {
+      const dv = new DataView(await blob.slice(off, off + 16).arrayBuffer());
+      let size = dv.getUint32(0);
+      const type = String.fromCharCode(dv.getUint8(4), dv.getUint8(5), dv.getUint8(6), dv.getUint8(7));
+      if (size === 1 && dv.byteLength >= 16) size = dv.getUint32(8) * 4294967296 + dv.getUint32(12);
+      if (type === 'moov') return true;
+      if (type === 'mdat') return false;
+      if (size < 8) return null;
+      off += size;
+    }
+  } catch (e) { /* not an MP4 */ }
+  return null;
+}
+
+/* ---------- analysis ---------- */
+async function probe(blob, name) {
+  const input = new MB.Input({ formats: MB.ALL_FORMATS, source: new MB.BlobSource(blob) });
+  const out = { size: blob.size, name };
+  out.mime = await input.getMimeType().catch(() => '');
+  out.container = out.mime.split(';')[0];
+  out.duration = await input.computeDuration();
+  const vt = await input.getPrimaryVideoTrack();
+  if (!vt) throw new Error('No video track found in this file.');
+  const at = await input.getPrimaryAudioTrack();
+  out.w = await vt.getDisplayWidth(); out.h = await vt.getDisplayHeight();
+  out.rotation = await vt.getRotation();
+  out.vCodec = await vt.getCodec();
+  out.vCodecStr = await vt.getCodecParameterString().catch(() => null);
+  out.canDecode = await vt.canDecode().catch(() => false);
+  out.hdr = await vt.hasHighDynamicRange().catch(() => false);
+  out.vDuration = await vt.computeDuration().catch(() => out.duration);
+  try {
+    const m = await vt.computeFrameRateMetrics();
+    out.fpsRaw = m.bestGuessFrameRate; out.fps = snapFps(m.bestGuessFrameRate); out.cfr = m.frameRateIsConstant || m.underlyingFrameRate != null;
+  } catch (e) { out.fps = 30; out.fpsRaw = 30; out.cfr = true; out.fpsUnknown = true; }
+  // audio
+  if (at) {
+    out.aCodec = await at.getCodec();
+    out.aCh = await at.getNumberOfChannels().catch(() => 2);
+    out.aSr = await at.getSampleRate().catch(() => 48000);
+    out.aCanDecode = await at.canDecode().catch(() => false);
+    out.aBitrate = await at.getAverageBitrate().catch(() => null);
+    if (!out.aBitrate) { try { out.aBitrate = (await at.computePacketStats(400)).averageBitrate; } catch (e) {} }
+  }
+  // video bitrate: prefer metadata, else whole-file estimate
+  let vb = await vt.getAverageBitrate().catch(() => null);
+  if (!vb && out.duration > 0) vb = Math.max(0, blob.size * 8 / out.duration - (out.aBitrate || 0));
+  if (!vb) { try { vb = (await vt.computePacketStats(300)).averageBitrate; } catch (e) {} }
+  out.vBitrate = vb || null;
+  out.fast = /mp4|quicktime/.test(out.container) ? await moovFirst(blob) : null;
+  input.dispose();
+  return out;
+}
+
+function sourceChecks(i) {
+  const c = [];
+  const add = (state, k, v, n) => c.push({ state, k, v, n });
+  const isMp4 = /video\/(mp4|quicktime)/.test(i.container);
+  add(isMp4 ? 'ok' : 'warn', 'Container', (i.container || 'unknown').replace('video/', '').replace('quicktime', 'MOV').toUpperCase(), isMp4 ? (i.fast === false ? 'Index is at the end of the file — export moves it to the front.' : '') : 'Instagram wants MP4 or MOV — export converts it.');
+  const vOk = i.vCodec === 'avc' || i.vCodec === 'hevc';
+  add(!i.canDecode ? 'bad' : vOk ? 'ok' : 'warn', 'Video codec', VNAME[i.vCodec] || i.vCodec || 'Unknown',
+    !i.canDecode ? 'This browser can\'t decode this codec, so it can\'t be exported here. Try Chrome or Edge on a computer.' : vOk ? '' : 'Instagram wants H.264 or HEVC — export converts it.');
+  add(i.w <= IG.maxW ? 'ok' : 'warn', 'Resolution', `${i.w}×${i.h} (${ratioLabel(i.w, i.h)})`, i.w <= IG.maxW ? '' : 'Wider than Instagram\'s 1920 px limit — it would shrink this itself, with a rougher scaler.');
+  const fOk = i.fps >= IG.minFps && i.fps <= IG.maxFps + 0.5;
+  add(fOk && i.cfr ? 'ok' : 'warn', 'Frame rate', fmtFps(i.fps) + ' fps' + (i.cfr ? '' : ' · variable'), !fOk ? 'Outside Instagram\'s 23–60 fps range.' : i.cfr ? '' : 'Variable frame rate (typical for phones) — export makes it constant.');
+  add(!i.vBitrate || i.vBitrate <= IG.maxVbr ? 'ok' : 'warn', 'Video bitrate', fmtMbps(i.vBitrate), i.vBitrate > IG.maxVbr ? 'Above Instagram\'s 25 Mbps maximum.' : '');
+  if (i.aCodec !== undefined) {
+    const aOk = i.aCodec === 'aac' && i.aCh <= 2 && i.aSr <= IG.maxSr;
+    add(aOk ? 'ok' : 'warn', 'Audio', `${audioName(i.aCodec)} · ${(i.aSr / 1000).toFixed(1).replace('.0', '')} kHz · ${i.aCh === 1 ? 'mono' : i.aCh === 2 ? 'stereo' : i.aCh + ' ch'}`, aOk ? '' : 'Instagram wants AAC, stereo or mono, up to 48 kHz — export converts it.');
+  } else add('info', 'Audio', 'None', 'No audio track.');
+  const dOk = i.duration >= IG.minDur && i.duration <= IG.maxDur;
+  add(dOk ? 'ok' : 'warn', 'Length', fmtDur(i.duration), i.duration < IG.minDur ? 'Reels need at least 3 seconds.' : i.duration > IG.maxDur ? 'Longer than 15 minutes — trim it below.' : '');
+  if (i.hdr) add('warn', 'Colour', 'HDR', 'HDR is converted to standard range in the browser; colours can shift slightly. Check the result before posting.');
+  return c;
+}
+const isCompliant = i => i.canDecode !== false && /video\/(mp4|quicktime)/.test(i.container) && (i.vCodec === 'avc' || i.vCodec === 'hevc')
+  && i.w <= IG.maxW && i.fps >= IG.minFps && i.fps <= IG.maxFps + 0.5 && (!i.vBitrate || i.vBitrate <= IG.maxVbr)
+  && (i.aCodec === undefined || (i.aCodec === 'aac' && i.aCh <= 2 && i.aSr <= IG.maxSr)) && !i.hdr && i.rotation === 0
+  && i.duration >= IG.minDur && i.duration <= IG.maxDur;
+const canRewrap = i => (i.vCodec === 'avc' || i.vCodec === 'hevc') && (i.aCodec === undefined || i.aCodec === 'aac');
+
+/* ---------- settings resolution ---------- */
+function autoFps(i) {
+  const f = i.fps;
+  if (f < IG.minFps) return 30;
+  if (f <= 30.5) return f;
+  if (f >= 47 && f <= 62) return snapFps(f / 2);
+  return 30;
+}
+function fpsChoices(i) {
+  const set = new Set([autoFps(i)]);
+  if (i.fps >= IG.minFps && i.fps <= IG.maxFps + 0.5) set.add(i.fps);
+  [24, 25, 30, 60].forEach(f => { if (f <= Math.max(30, i.fps + 0.5)) set.add(f); });
+  return [...set].sort((a, b) => a - b);
+}
+function computeDims(i, preset, tier, fit, upscale) {
+  const sAR = i.w / i.h;
+  let id = preset;
+  if (preset === 'auto') { const near = STD.find(s => Math.abs(Math.log(sAR / s.r)) < 0.03); id = near ? near.id : 'orig'; }
+  const std = STD.find(s => s.id === id) || null;
+  const ratio = std ? std.r : sAR;
+  let W, H;
+  if (ratio <= 1) { W = tier; H = tier / ratio; } else { H = tier; W = tier * ratio; }
+  const k = Math.min(1, (tier >= 2160 ? Infinity : IG.maxW) / W, (tier * 16 / 9) / H);
+  W *= k; H *= k;
+  let scale = !std ? W / i.w : fit === 'cover' ? Math.max(W / i.w, H / i.h) : Math.min(W / i.w, H / i.h);
+  let shrunk = false;
+  if (!upscale && scale > 1.001) { W /= scale; H /= scale; scale = 1; shrunk = true; }
+  W = even(W); H = even(H);
+  const differs = !!std && Math.abs(Math.log(sAR / ratio)) > 0.006;
+  return { W, H, std, shrunk, fit: std ? fit : 'fill', scale, cropped: differs && fit === 'cover', barred: differs && fit === 'contain' };
+}
+function autoBitrate(i, r) {
+  let b = r.W * r.H * 30 * 0.19 * Math.pow(r.fps / 30, 0.6) * (r.codec === 'hevc' ? 0.7 : 1);
+  if (i.vBitrate && r.scale >= 0.95) {
+    // not shrinking: more bits than ~1.5x the source can't add detail
+    const srcEq = i.vBitrate * (EFF[r.codec] || 1) / (EFF[i.vCodec] || 1) * 1.5;
+    b = Math.min(b, Math.max(srcEq, 6e6));
+  }
+  return clamp(Math.round(b / 5e5) * 5e5, 2e6, IG.maxVbr);
+}
+function trimRange() {
+  const d = info.duration;
+  let a = parseFloat($('tStart').value), b = parseFloat($('tEnd').value);
+  a = isFinite(a) && a > 0 ? Math.min(a, d) : 0;
+  b = isFinite(b) && b > 0 ? Math.min(b, d) : d;
+  if (b <= a) b = d;
+  return { start: a, end: b, active: a > 0.001 || b < d - 0.001 };
+}
+function resolve() {
+  const i = info, A = S.auto;
+  const r = {};
+  r.trim = trimRange();
+  r.duration = r.trim.end - r.trim.start;
+  const compliant = isCompliant(i);
+  r.mode = A ? (compliant && !r.trim.active ? 'rewrap' : 'encode') : (S.mode === 'rewrap' && canRewrap(i) ? 'rewrap' : 'encode');
+  r.preset = A ? 'auto' : S.preset; r.tier = A ? 1080 : S.tier; r.upscale = A ? false : S.upscale;
+  Object.assign(r, computeDims(i, r.preset, r.tier, A ? 'cover' : S.fit, r.upscale));
+  r.fps = A || S.fps === 'auto' ? autoFps(i) : S.fps;
+  r.codec = A ? 'avc' : (S.codec === 'hevc' && caps.hevc ? 'hevc' : 'avc');
+  r.kf = A ? 2 : S.kf; r.hw = A ? 'no-preference' : S.hw;
+  r.vbrAuto = autoBitrate(i, r);
+  r.vbr = A || S.vbr === 'auto' ? r.vbrAuto : S.vbr * 1e6;
+  // audio
+  const pick = A ? 'auto' : S.audio;
+  if (i.aCodec === undefined || pick === 'none') r.audio = { mode: 'none', bitrate: 0 };
+  else {
+    const copyable = i.aCodec === 'aac' && i.aCh <= 2 && i.aSr <= IG.maxSr && !r.trim.active;
+    if (pick === 'auto' && copyable) r.audio = { mode: 'copy', bitrate: i.aBitrate || 192e3, sr: i.aSr, ch: i.aCh };
+    else r.audio = { mode: 'encode', bitrate: Math.min(pick === 'auto' ? 256 : +pick, caps.aacMax || 256) * 1e3, sr: i.aSr === 44100 ? 44100 : 48000, ch: Math.min(i.aCh || 2, 2) };
+  }
+  if (r.mode === 'rewrap') {
+    r.W = i.w; r.H = i.h; r.fps = i.fps; r.codec = i.vCodec; r.vbr = i.vBitrate || 0; r.scale = 1; r.cropped = r.barred = false;
+    r.audio = i.aCodec === undefined ? { mode: 'none', bitrate: 0 } : { mode: 'copy', bitrate: i.aBitrate || 0, sr: i.aSr, ch: i.aCh };
+    r.estBytes = i.size;
+  } else r.estBytes = (r.vbr + r.audio.bitrate) * r.duration / 8;
+  return r;
+}
+
+function recommendation(i, r) {
+  const why = [];
+  const li = (html) => why.push(html);
+  if (r.mode === 'rewrap') {
+    li('<b>Your file already meets Instagram\'s spec.</b> Re-encoding it would only throw quality away, so the picture and sound are copied bit-for-bit.');
+    li('The file is rewritten as MP4 with its index at the front, which is the layout Instagram asks for.');
+    return why;
+  }
+  if (r.scale < 0.97) li(`<b>${r.W}×${r.H}</b> — Instagram plays video at 1080p and would shrink your ${i.w}×${i.h} itself. Doing it here uses a high-quality scaler and keeps the detail.`);
+  else if (i.w < 1000 && i.h < 1000 || Math.min(i.w, i.h) < 1000) li(`<b>${r.W}×${r.H}</b> — kept at its own size. Upscaling adds no real detail (you can still force it in Manual).`);
+  else li(`<b>${r.W}×${r.H}</b> — already the size Instagram displays, so no resizing is needed.`);
+  if (!r.std) li('Its shape isn\'t one of Instagram\'s standard ones, so it is kept as-is rather than cropped. Pick 9:16 in Manual to fill the Reels screen.');
+  if (Math.abs(r.fps - i.fps) > 0.02) li(`<b>${fmtFps(r.fps)} fps</b> from ${fmtFps(i.fps)} — Instagram plays most video at 30 fps or under, and fewer frames means more bitrate for each one. Choose 60 in Manual if you want to keep it.`);
+  else li(`<b>${fmtFps(r.fps)} fps</b> — kept as shot${i.cfr ? '' : ', locked to a constant rate'}.`);
+  li(`<b>${fmtMbps(r.vbr)} ${VNAME[r.codec].split(' ')[0]}</b> — high enough that the encode is visually clean, and under Instagram's 25 Mbps ceiling so the upload isn't rejected or pre-squeezed.`);
+  if (r.audio.mode === 'copy') li('<b>Audio copied untouched</b> — it is already AAC, so it isn\'t re-compressed.');
+  else if (r.audio.mode === 'encode') li(`<b>AAC ${r.audio.bitrate / 1e3} kbps, ${r.audio.sr / 1000} kHz</b> — ${r.audio.bitrate < 256e3 ? 'the most this device\'s AAC encoder offers, and ' : ''}above what Instagram delivers, so its own audio pass starts from a clean track.`);
+  return why;
+}
+
+/* ---------- render ---------- */
+function setChecks(ul, list) {
+  ul.replaceChildren(...list.map(c => {
+    const li = el('li', c.state);
+    li.append(el('span', 'dot'), el('span', 'k', c.k), el('span', 'v', c.v));
+    if (c.n) li.append(el('span', 'n', c.n));
+    return li;
+  }));
+}
+function render() {
+  if (!info) return;
+  R = resolve();
+  const r = R, enc = r.mode === 'encode', A = S.auto;
+  // recommendation (always the auto result)
+  const keep = S.auto; S.auto = true; const rec = resolve(); S.auto = keep;
+  $('recline').textContent = rec.mode === 'rewrap'
+    ? `Lossless rewrap · ${rec.W}×${rec.H} · ${fmtFps(rec.fps)} fps · no re-encode`
+    : `${rec.W}×${rec.H} · ${VNAME[rec.codec].split(' ')[0]} · ${fmtFps(rec.fps)} fps · ${fmtMbps(rec.vbr)}` + (rec.audio.mode === 'none' ? '' : rec.audio.mode === 'copy' ? ' · original audio' : ` · AAC ${rec.audio.bitrate / 1e3}k`);
+  $('why').innerHTML = recommendation(info, rec).map(h => `<li>${h}</li>`).join('');
+
+  // controls
+  $('mAuto').setAttribute('aria-pressed', A); $('mManual').setAttribute('aria-pressed', !A);
+  const sMode = $('sMode'); sMode.value = r.mode; sMode.querySelector('[value=rewrap]').disabled = !canRewrap(info);
+  $('sPreset').value = r.preset; $('sTier').value = r.tier; $('sFit').value = A ? 'cover' : S.fit;
+  const fsel = $('sFps'), fl = fpsChoices(info);
+  fsel.replaceChildren(...fl.map(f => { const o = el('option', '', fmtFps(f) + ' fps' + (f === autoFps(info) ? ' — recommended' : '')); o.value = f; return o; }));
+  fsel.value = r.fps;
+  $('sCodec').value = enc ? r.codec : (info.vCodec === 'hevc' ? 'hevc' : 'avc'); $('sKf').value = r.kf; $('sHw').value = r.hw; $('sUp').checked = r.upscale;
+  $('sAudio').value = A ? 'auto' : S.audio;
+  $('sAudio').querySelectorAll('option').forEach(o => { if (/^\d+$/.test(o.value)) o.disabled = !caps.aac || +o.value > caps.aacMax; });
+  const vb = $('sVbr'); vb.value = r.vbr / 1e6;
+  $('vbrVal').textContent = fmtMbps(r.vbr) + (A || S.vbr === 'auto' ? ' (auto)' : '');
+  $('vbrHint').textContent = A || S.vbr === 'auto' ? 'Follows resolution and frame rate automatically.' : `Auto would use ${fmtMbps(r.vbrAuto)}. Instagram's maximum is 25 Mbps.`;
+  document.querySelectorAll('#settings .grid select, #settings .grid input').forEach(e => { e.disabled = A || (e.id !== 'sMode' && !enc); });
+  $('sFit').disabled = A || !enc || !r.std;
+  document.querySelectorAll('#settings .enc').forEach(e => e.style.opacity = enc ? '' : '.45');
+
+  // notes
+  const notes = [];
+  const n = (cls, t) => notes.push({ cls, t });
+  if (!info.canDecode && enc) n('bad', `This browser can't decode ${VNAME[info.vCodec] || 'this codec'}, so it can't re-encode this file. Try Chrome or Edge on a computer.`);
+  if (enc && r.tier >= 2160) n('', 'Instagram shrinks anything wider than 1920 px, so a 4K upload usually ends up softer than a 1080p one. Use this only as an archive master.');
+  if (enc && r.vbr > IG.maxVbr) n('', 'Above Instagram\'s 25 Mbps maximum — it may reject the upload or compress it harder.');
+  if (enc && r.cropped) n('info', `Cropping the edges to fill ${ratioLabel(r.W, r.H)}. The preview shows what stays in frame.`);
+  if (enc && !S.auto && r.shrunk) n('info', `Your video has fewer pixels than ${r.tier}p in this format, so the output is ${r.W}×${r.H}. Tick "Upscale" to fill the full size.`);
+  if (enc && r.barred) n('info', 'Black bars are added to keep the whole picture.');
+  if (enc && r.codec === 'hevc') n('info', 'HEVC gives the same quality in a smaller file. H.264 remains the safest choice if an upload ever fails.');
+  if (enc && r.audio.mode === 'encode' && !caps.aac) n('bad', 'This browser has no AAC audio encoder. Use Chrome or Edge, or choose "Remove audio".');
+  if (r.duration < IG.minDur) n('', 'Shorter than 3 seconds — Instagram won\'t accept it as a Reel.');
+  if (r.duration > IG.maxDur) n('', 'Longer than 15 minutes — trim it to fit a Reel.');
+  else if (r.duration > 60) n('info', 'Over 60 seconds: fine for Reels, too long for a single Story.');
+  if (r.estBytes > IG.apiMaxBytes) n('info', `About ${fmtBytes(r.estBytes)}. The Instagram app accepts this; scheduling tools that post through Instagram's API stop at 300 MB.`);
+  if (r.estBytes > 1.4e9) n('', 'A file this large is held in memory while it is built. On a phone, trim it or lower the bitrate.');
+  $('notes').replaceChildren(...notes.map(x => el('li', x.cls, x.t)));
+
+  $('sumOut').textContent = `${r.W}×${r.H} · ${fmtFps(r.fps)} fps · ${fmtDur(r.duration)}`;
+  $('sumSize').textContent = fmtBytes(r.estBytes);
+  $('go').textContent = r.mode === 'rewrap' ? 'Export (lossless rewrap)' : 'Export for Instagram';
+  $('go').disabled = !caps.avc && enc || (enc && !info.canDecode) || (enc && r.audio.mode === 'encode' && !caps.aac);
+
+  // framing preview
+  const fr = $('frame'), pv = $('pv');
+  fr.style.aspectRatio = `${r.W} / ${r.H}`;
+  fr.style.width = `min(100%, calc(46vh * ${r.W / r.H}))`;
+  pv.style.objectFit = enc && r.barred ? 'contain' : enc && r.cropped ? 'cover' : 'fill';
+  $('framecap').textContent = `Output framing · ${r.W}×${r.H} (${ratioLabel(r.W, r.H)})`;
+}
+
+/* ---------- load ---------- */
+async function loadFile(f) {
+  if (!f) return;
+  $('loadErr').classList.add('hidden');
+  if (!MB) { showLoadErr('The encoder library did not load. Check that the vendor folder was uploaded next to index.html.'); return; }
+  try {
+    document.body.style.cursor = 'progress';
+    const i = await probe(f, f.name);
+    file = f; info = i;
+    Object.assign(S, { auto: true, mode: 'auto', preset: 'auto', tier: 1080, fit: 'cover', upscale: false, fps: 'auto', codec: 'avc', vbr: 'auto', kf: 2, hw: 'no-preference', audio: 'auto' });
+    $('tStart').value = ''; $('tEnd').value = ''; $('tEnd').placeholder = i.duration.toFixed(1);
+    $('fname').textContent = f.name;
+    $('fmeta').textContent = `${fmtBytes(f.size)} · ${fmtDur(i.duration)}`;
+    setChecks($('checks'), sourceChecks(i));
+    if (pvUrl) URL.revokeObjectURL(pvUrl);
+    pvUrl = URL.createObjectURL(f); $('pv').src = pvUrl;
+    $('drop').classList.add('hidden'); $('work').classList.remove('hidden');
+    showPanel('settings');
+    render();
+    window.scrollTo({ top: 0 });
+  } catch (e) {
+    console.error(e);
+    showLoadErr('Couldn\'t read this file as a video. ' + (e && e.message ? e.message : ''));
+  } finally { document.body.style.cursor = ''; }
+}
+function showLoadErr(t) { const e = $('loadErr'); e.textContent = t; e.classList.remove('hidden'); }
+function showPanel(which) {
+  for (const id of ['settings', 'prog', 'done']) $(id).classList.toggle('hidden', id !== which);
+}
+
+/* ---------- export ---------- */
+async function run() {
+  const r = R, i = info;
+  $('runErr').classList.add('hidden');
+  showPanel('prog'); setProgress(0, 'Preparing…');
+  let input;
+  try {
+    try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {}
+    if (r.mode === 'encode') {
+      const ok = await MB.canEncodeVideo(r.codec, { width: r.W, height: r.H, quality: new MB.Quality({ bitrate: r.vbr }) }).catch(() => false);
+      if (!ok) throw new Error(`This device's encoder can't do ${VNAME[r.codec]} at ${r.W}×${r.H}. Try 1080p or H.264.`);
+    }
+    input = new MB.Input({ formats: MB.ALL_FORMATS, source: new MB.BlobSource(file) });
+    const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: 'in-memory' }), target: new MB.BufferTarget() });
+    const opts = { input, output, tracks: 'primary', tags: {} };
+    if (r.mode === 'encode') {
+      const v = { width: r.W, height: r.H, fit: r.fit, codec: r.codec, quality: new MB.Quality({ bitrate: r.vbr }),
+        keyFrameInterval: r.kf, forceTranscode: true, allowTransformationMetadata: false, hardwareAcceleration: r.hw };
+      if (!(i.cfr && Math.abs(r.fps - i.fps) < 0.02)) v.frameRate = r.fps;
+      opts.video = v;
+      if (r.audio.mode === 'none') opts.audio = { discard: true };
+      else if (r.audio.mode === 'copy') opts.audio = { codec: 'aac' };
+      else opts.audio = { codec: 'aac', numberOfChannels: r.audio.ch, sampleRate: r.audio.sr, quality: new MB.Quality({ bitrate: r.audio.bitrate }), forceTranscode: true };
+      if (r.trim.active) opts.trim = { start: r.trim.start, end: r.trim.end };
+    }
+    conversion = await MB.Conversion.init(opts);
+    const lostVideo = conversion.discardedTracks.find(d => d.track.type === 'video');
+    const lostAudio = conversion.discardedTracks.find(d => d.track.type === 'audio' && d.reason !== 'discarded_by_user');
+    if (!conversion.isValid || lostVideo) throw new Error('This video can\'t be converted in this browser' + (lostVideo ? ` (${lostVideo.reason.replace(/_/g, ' ')})` : '') + '. Try Chrome or Edge on a computer.');
+    if (lostAudio) throw new Error(`The audio track can't be converted here (${lostAudio.reason.replace(/_/g, ' ')}). Use Chrome or Edge, or choose "Remove audio" in Manual.`);
+    const t0 = performance.now();
+    conversion.onProgress = p => {
+      const el = (performance.now() - t0) / 1000;
+      const eta = p > 0.02 ? el * (1 - p) / p : null;
+      setProgress(p, r.mode === 'rewrap' ? 'Copying streams…' : 'Encoding…', eta, el > 1 ? p * r.duration / el : null);
+    };
+    await conversion.execute();
+    setProgress(1, 'Checking file…');
+    outBlob = new Blob([output.target.buffer], { type: 'video/mp4' });
+    await finish(r, (performance.now() - t0) / 1000);
+  } catch (e) {
+    const canceled = MB.ConversionCanceledError && e instanceof MB.ConversionCanceledError;
+    showPanel('settings');
+    if (!canceled) { console.error(e); const b = $('runErr'); b.textContent = (e && e.message) || String(e); b.classList.remove('hidden'); }
+  } finally {
+    conversion = null;
+    try { input && input.dispose(); } catch (e) {}
+    try { wake && wake.release(); } catch (e) {} wake = null;
+  }
+}
+function setProgress(p, stage, eta, speed) {
+  $('pct').textContent = Math.floor(p * 100) + '%';
+  $('pbar').style.width = (p * 100).toFixed(1) + '%';
+  $('pStage').textContent = stage;
+  $('pEta').textContent = eta != null ? 'About ' + fmtDur(eta) + ' left' : '';
+  $('pSpeed').textContent = speed ? speed.toFixed(1) + '× real time' : '';
+}
+async function finish(r, secs) {
+  const base = file.name.replace(/\.[^.]+$/, '').replace(/[^\w\-]+/g, '_').slice(0, 60) || 'video';
+  const name = `${base}_insta_${r.W}x${r.H}.mp4`;
+  if (outUrl) URL.revokeObjectURL(outUrl);
+  outUrl = URL.createObjectURL(outBlob);
+  const dl = $('dl'); dl.href = outUrl; dl.download = name;
+  const o = await probe(outBlob, name);
+  const list = [];
+  const add = (ok, k, v, n) => list.push({ state: ok ? 'ok' : 'warn', k, v, n: ok ? '' : n });
+  add(o.fast === true, 'Container', 'MP4 · fast start', 'Index is not at the front of the file.');
+  add(o.vCodec === 'avc' || o.vCodec === 'hevc', 'Video codec', `${VNAME[o.vCodec] || o.vCodec}${o.vCodecStr ? ' · ' + o.vCodecStr : ''}`, 'Not H.264 or HEVC.');
+  add(o.w <= IG.maxW, 'Resolution', `${o.w}×${o.h} (${ratioLabel(o.w, o.h)})`, 'Wider than 1920 px — Instagram will shrink it.');
+  add(o.fps >= IG.minFps && o.fps <= IG.maxFps + 0.5, 'Frame rate', fmtFps(o.fps) + ' fps', 'Outside 23–60 fps.');
+  add(!o.vBitrate || o.vBitrate <= IG.maxVbr * 1.05, 'Video bitrate', fmtMbps(o.vBitrate), 'Above 25 Mbps.');
+  if (o.aCodec !== undefined) add(o.aCodec === 'aac' && o.aSr <= IG.maxSr && o.aCh <= 2, 'Audio', `${audioName(o.aCodec)} · ${o.aSr / 1000} kHz · ${o.aCh === 1 ? 'mono' : 'stereo'}${o.aBitrate ? ' · ' + Math.round(o.aBitrate / 1e3) + ' kbps' : ''}`, 'Not Instagram-standard audio.');
+  else list.push({ state: 'info', k: 'Audio', v: 'None' });
+  add(o.duration >= IG.minDur && o.duration <= IG.maxDur, 'Length', fmtDur(o.duration), 'Outside 3 s – 15 min.');
+  list.push({ state: 'ok', k: 'File size', v: fmtBytes(o.size) });
+  setChecks($('outChecks'), list);
+  $('doneSub').textContent = `${name} · ${fmtBytes(o.size)} · took ${fmtDur(secs)}`;
+  let shareable = false;
+  try { shareable = !!navigator.canShare && navigator.canShare({ files: [new File([outBlob], name, { type: 'video/mp4' })] }); } catch (e) {}
+  $('share').classList.toggle('hidden', !shareable);
+  $('share').onclick = async () => { try { await navigator.share({ files: [new File([outBlob], name, { type: 'video/mp4' })] }); } catch (e) {} };
+  showPanel('done');
+}
+
+/* ---------- events ---------- */
+const drop = $('drop'), fileInput = $('file');
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+fileInput.addEventListener('change', () => { loadFile(fileInput.files[0]); fileInput.value = ''; });
+$('change').addEventListener('click', () => fileInput.click());
+['dragenter', 'dragover'].forEach(t => window.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => window.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+window.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f && !conversion) loadFile(f); });
+
+$('mAuto').addEventListener('click', () => { S.auto = true; render(); });
+$('mManual').addEventListener('click', () => {
+  if (S.auto && R) Object.assign(S, { mode: 'encode', preset: 'auto', tier: 1080, fit: 'cover', fps: 'auto', codec: 'avc', vbr: 'auto', audio: 'auto' });
+  S.auto = false; render();
+});
+const bind = (id, key, conv = v => v) => $(id).addEventListener('change', e => { S[key] = conv(e.target.value); render(); });
+bind('sMode', 'mode'); bind('sPreset', 'preset'); bind('sTier', 'tier', Number); bind('sFit', 'fit'); bind('sFps', 'fps', Number);
+bind('sCodec', 'codec'); bind('sKf', 'kf', Number); bind('sHw', 'hw'); bind('sAudio', 'audio');
+$('sUp').addEventListener('change', e => { S.upscale = e.target.checked; render(); });
+$('sVbr').addEventListener('input', e => { S.vbr = Number(e.target.value); render(); });
+$('sVbr').addEventListener('dblclick', () => { S.vbr = 'auto'; render(); });
+['sPreset', 'sTier', 'sFps', 'sCodec'].forEach(id => $(id).addEventListener('change', () => { S.vbr = 'auto'; render(); }));
+['tStart', 'tEnd'].forEach(id => $(id).addEventListener('input', render));
+$('go').addEventListener('click', run);
+$('cancel').addEventListener('click', () => { if (conversion) conversion.cancel().catch(() => {}); });
+$('again').addEventListener('click', () => { showPanel('settings'); render(); });
+window.addEventListener('beforeunload', e => { if (conversion) { e.preventDefault(); e.returnValue = ''; } });
+
+detectCaps();
+})();
+</script>
+</body>
+</html>
