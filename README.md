@@ -10,6 +10,10 @@ Open `index.html` in Chrome or Edge, or host it (below) and open the link on you
 2. **Auto** picks resolution, frame rate, bitrate and audio for that video and explains why. **Manual** unlocks every setting.
 3. Export, then Save (or Share straight to Instagram on a phone).
 
+## Colour looks (LUTs)
+
+Add your own 3D `.cube` LUTs with **Add .cube** (or drop them on the page). Pick one, set its **Power** from 0–100%, and check it on the live preview — **Show original** flips back for comparison. The LUT is baked into the export. Your LUTs are saved in that browser, so they are there next time; each device keeps its own list.
+
 If a file already meets the spec, Auto does a **lossless rewrap** instead of re-encoding — zero quality change.
 
 ## Put it on GitHub Pages (free link for phone + laptop)

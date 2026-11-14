@@ -59,6 +59,14 @@ h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute
 .stage{background:#000;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:10px;margin-bottom:6px}
 .frame{background:#000;outline:1px solid var(--line2);max-height:46vh;max-width:100%;overflow:hidden;position:relative}
 .frame video{width:100%;height:100%;display:block}
+.frame canvas{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
+.lutbar{display:flex;gap:8px;align-items:center;margin:8px 0 2px}
+.lutbar input{flex:1;min-width:0}
+.mini{appearance:none;background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:9px;min-height:40px;padding:0 14px;font:600 13px inherit;font-family:inherit;cursor:pointer;white-space:nowrap}
+.mini[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.mini:disabled{opacity:.45;cursor:not-allowed}
+.lutrow{display:flex;gap:8px}
+.lutrow select{flex:1;min-width:0}
 .framecap{color:var(--dim);font-size:12px;text-align:center;margin-bottom:14px}
 
 .checks{list-style:none;margin:0;padding:0}
@@ -145,7 +153,12 @@ footer a{color:var(--muted)}
           <div style="min-width:0"><div class="fname" id="fname"></div><div class="fmeta" id="fmeta"></div></div>
           <button class="link" id="change">Change video</button>
         </div>
-        <div class="stage"><div class="frame" id="frame"><video id="pv" muted playsinline controls preload="metadata"></video></div></div>
+        <div class="stage"><div class="frame" id="frame"><video id="pv" muted playsinline controls preload="auto"></video><canvas id="pvc" class="hidden" aria-label="Preview with LUT applied"></canvas></div></div>
+        <div class="lutbar hidden" id="lutbar">
+          <button class="mini" id="pPlay">Play</button>
+          <input id="pSeek" type="range" min="0" max="1000" value="0" aria-label="Preview position">
+          <button class="mini" id="pCmp" aria-pressed="false">Show original</button>
+        </div>
         <div class="framecap" id="framecap"></div>
         <h2>Your video vs Instagram's spec</h2>
         <ul class="checks" id="checks"></ul>
@@ -157,6 +170,25 @@ footer a{color:var(--muted)}
         <h2>Recommended for this video</h2>
         <p class="recline" id="recline"></p>
         <ul class="why" id="why"></ul>
+      </div>
+
+      <div class="panel" id="lutPanel">
+        <h2>Colour look (LUT)</h2>
+        <div class="f">
+          <label for="lutSel">LUT</label>
+          <div class="lutrow">
+            <select id="lutSel"><option value="">None</option></select>
+            <button class="mini" id="lutAdd">Add .cube</button>
+            <button class="mini" id="lutDel" aria-label="Remove selected LUT">Remove</button>
+          </div>
+          <input id="lutFile" type="file" accept=".cube,.CUBE,text/plain" multiple hidden>
+        </div>
+        <div class="f" style="margin-top:12px">
+          <div class="lab"><span>Power</span><b id="lutVal">100%</b></div>
+          <input id="lutK" type="range" min="0" max="100" step="1" value="100" aria-label="LUT power in percent">
+          <div class="hint" id="lutHint">Add your own .cube files. They stay saved in this browser for next time.</div>
+        </div>
+        <div id="lutErr" class="err hidden"></div>
       </div>
 
       <div class="panel" id="settings">
@@ -308,11 +340,15 @@ const fmtDur = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - 
 const fmtFps = f => (Math.abs(f - Math.round(f)) < 0.005 ? String(Math.round(f)) : f.toFixed(3).replace(/0+$/, '')) ;
 const snapFps = f => { const n = FPS_STD.reduce((a, b) => Math.abs(b - f) < Math.abs(a - f) ? b : a); return Math.abs(n - f) / f < 0.012 ? n : Math.round(f * 100) / 100; };
 const ratioLabel = (w, h) => { const r = w / h; const s = STD.find(s => Math.abs(Math.log(r / s.r)) < 0.012); return s ? s.label : r.toFixed(2) + ':1'; };
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const audioName = c => !c ? 'Unknown' : c === 'aac' ? 'AAC' : c.startsWith('pcm') ? 'PCM' : c.toUpperCase();
 
 /* ---------- state ---------- */
 let info = null, file = null, R = null, conversion = null, outBlob = null, outUrl = null, pvUrl = null, wake = null;
 const caps = { video: false, avc: false, hevc: false, aac: false, aacMax: 0 };
+const LUTS = []; // { id, name, size, data, min, max }
+const L = { id: '', k: 1, compare: false };
+const activeLut = () => (L.id && L.k > 0 && LUTS.find(l => l.id === L.id)) || null;
 const S = { auto: true, mode: 'auto', preset: 'auto', tier: 1080, fit: 'cover', upscale: false, fps: 'auto', codec: 'avc', vbr: 'auto', kf: 2, hw: 'no-preference', audio: 'auto' };
 
 /* ---------- capability check ---------- */
@@ -484,7 +520,8 @@ function resolve() {
   r.trim = trimRange();
   r.duration = r.trim.end - r.trim.start;
   const compliant = isCompliant(i);
-  r.mode = A ? (compliant && !r.trim.active ? 'rewrap' : 'encode') : (S.mode === 'rewrap' && canRewrap(i) ? 'rewrap' : 'encode');
+  r.lut = activeLut(); r.lutK = L.k;
+  r.mode = r.lut ? 'encode' : A ? (compliant && !r.trim.active ? 'rewrap' : 'encode') : (S.mode === 'rewrap' && canRewrap(i) ? 'rewrap' : 'encode');
   r.preset = A ? 'auto' : S.preset; r.tier = A ? 1080 : S.tier; r.upscale = A ? false : S.upscale;
   Object.assign(r, computeDims(i, r.preset, r.tier, A ? 'cover' : S.fit, r.upscale));
   r.fps = A || S.fps === 'auto' ? autoFps(i) : S.fps;
@@ -522,6 +559,7 @@ function recommendation(i, r) {
   if (!r.std) li('Its shape isn\'t one of Instagram\'s standard ones, so it is kept as-is rather than cropped. Pick 9:16 in Manual to fill the Reels screen.');
   if (Math.abs(r.fps - i.fps) > 0.02) li(`<b>${fmtFps(r.fps)} fps</b> from ${fmtFps(i.fps)} — Instagram plays most video at 30 fps or under, and fewer frames means more bitrate for each one. Choose 60 in Manual if you want to keep it.`);
   else li(`<b>${fmtFps(r.fps)} fps</b> — kept as shot${i.cfr ? '' : ', locked to a constant rate'}.`);
+  if (r.lut) li(`<b>LUT "${esc(r.lut.name)}" at ${Math.round(r.lutK * 100)}%</b> is baked into the picture, so the video is re-encoded.`);
   li(`<b>${fmtMbps(r.vbr)} ${VNAME[r.codec].split(' ')[0]}</b> — high enough that the encode is visually clean, and under Instagram's 25 Mbps ceiling so the upload isn't rejected or pre-squeezed.`);
   if (r.audio.mode === 'copy') li('<b>Audio copied untouched</b> — it is already AAC, so it isn\'t re-compressed.');
   else if (r.audio.mode === 'encode') li(`<b>AAC ${r.audio.bitrate / 1e3} kbps, ${r.audio.sr / 1000} kHz</b> — ${r.audio.bitrate < 256e3 ? 'the most this device\'s AAC encoder offers, and ' : ''}above what Instagram delivers, so its own audio pass starts from a clean track.`);
@@ -550,7 +588,7 @@ function render() {
 
   // controls
   $('mAuto').setAttribute('aria-pressed', A); $('mManual').setAttribute('aria-pressed', !A);
-  const sMode = $('sMode'); sMode.value = r.mode; sMode.querySelector('[value=rewrap]').disabled = !canRewrap(info);
+  const sMode = $('sMode'); sMode.value = r.mode; sMode.querySelector('[value=rewrap]').disabled = !canRewrap(info) || !!r.lut;
   $('sPreset').value = r.preset; $('sTier').value = r.tier; $('sFit').value = A ? 'cover' : S.fit;
   const fsel = $('sFps'), fl = fpsChoices(info);
   fsel.replaceChildren(...fl.map(f => { const o = el('option', '', fmtFps(f) + ' fps' + (f === autoFps(info) ? ' — recommended' : '')); o.value = f; return o; }));
@@ -571,6 +609,7 @@ function render() {
   if (!info.canDecode && enc) n('bad', `This browser can't decode ${VNAME[info.vCodec] || 'this codec'}, so it can't re-encode this file. Try Chrome or Edge on a computer.`);
   if (enc && r.tier >= 2160) n('', 'Instagram shrinks anything wider than 1920 px, so a 4K upload usually ends up softer than a 1080p one. Use this only as an archive master.');
   if (enc && r.vbr > IG.maxVbr) n('', 'Above Instagram\'s 25 Mbps maximum — it may reject the upload or compress it harder.');
+  if (r.lut && !S.auto && S.mode === 'rewrap') n('info', 'A LUT changes the picture, so lossless rewrap is not possible — the video is re-encoded.');
   if (enc && r.cropped) n('info', `Cropping the edges to fill ${ratioLabel(r.W, r.H)}. The preview shows what stays in frame.`);
   if (enc && !S.auto && r.shrunk) n('info', `Your video has fewer pixels than ${r.tier}p in this format, so the output is ${r.W}×${r.H}. Tick "Upscale" to fill the full size.`);
   if (enc && r.barred) n('info', 'Black bars are added to keep the whole picture.');
@@ -593,7 +632,8 @@ function render() {
   fr.style.aspectRatio = `${r.W} / ${r.H}`;
   fr.style.width = `min(100%, calc(46vh * ${r.W / r.H}))`;
   pv.style.objectFit = enc && r.barred ? 'contain' : enc && r.cropped ? 'cover' : 'fill';
-  $('framecap').textContent = `Output framing · ${r.W}×${r.H} (${ratioLabel(r.W, r.H)})`;
+  $('framecap').textContent = `Output framing · ${r.W}×${r.H} (${ratioLabel(r.W, r.H)})` + (r.lut ? ` · LUT ${Math.round(r.lutK * 100)}%` : '');
+  syncLutUi();
 }
 
 /* ---------- load ---------- */
@@ -631,7 +671,7 @@ async function run() {
   const r = R, i = info;
   $('runErr').classList.add('hidden');
   showPanel('prog'); setProgress(0, 'Preparing…');
-  let input;
+  let input, grader = null;
   try {
     try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {}
     if (r.mode === 'encode') {
@@ -645,6 +685,22 @@ async function run() {
       const v = { width: r.W, height: r.H, fit: r.fit, codec: r.codec, quality: new MB.Quality({ bitrate: r.vbr }),
         keyFrameInterval: r.kf, forceTranscode: true, allowTransformationMetadata: false, hardwareAcceleration: r.hw };
       if (!(i.cfr && Math.abs(r.fps - i.fps) < 0.02)) v.frameRate = r.fps;
+      if (r.lut) {
+        const oc = new OffscreenCanvas(r.W, r.H);
+        grader = makeGrader(oc);
+        if (!grader) throw new Error('This browser can\'t apply LUTs (WebGL 2 is unavailable). Set the LUT to None to export.');
+        grader.setLut(r.lut);
+        const k = r.lutK;
+        v.process = sample => {
+          const vf = sample.toVideoFrame();
+          try {
+            if (oc.width !== vf.displayWidth || oc.height !== vf.displayHeight) { oc.width = vf.displayWidth; oc.height = vf.displayHeight; }
+            grader.draw(vf, k, 1, 1);
+          } finally { vf.close(); }
+          return oc;
+        };
+        v.processedWidth = r.W; v.processedHeight = r.H;
+      }
       opts.video = v;
       if (r.audio.mode === 'none') opts.audio = { discard: true };
       else if (r.audio.mode === 'copy') opts.audio = { codec: 'aac' };
@@ -674,6 +730,7 @@ async function run() {
     conversion = null;
     try { input && input.dispose(); } catch (e) {}
     try { wake && wake.release(); } catch (e) {} wake = null;
+    try { grader && grader.dispose(); } catch (e) {}
   }
 }
 function setProgress(p, stage, eta, speed) {
@@ -710,6 +767,161 @@ async function finish(r, secs) {
   showPanel('done');
 }
 
+/* ---------- LUTs ---------- */
+function parseCube(text, name) {
+  let size = 0, min = [0, 0, 0], max = [1, 1, 1], data = null, n = 0, title = '';
+  const lines = text.split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line[0] === '#') continue;
+    const c = line.charCodeAt(0);
+    if ((c >= 48 && c <= 57) || c === 45 || c === 46 || c === 43) {
+      if (!data) throw new Error('the file has colour values before a LUT_3D_SIZE line');
+      const p = line.split(/\s+/);
+      if (p.length < 3 || n + 3 > data.length) throw new Error('the file has more values than its size allows');
+      data[n++] = +p[0]; data[n++] = +p[1]; data[n++] = +p[2];
+      continue;
+    }
+    const p = line.split(/\s+/), key = p[0].toUpperCase();
+    if (key === 'TITLE') title = line.slice(5).trim().replace(/^"|"$/g, '');
+    else if (key === 'LUT_1D_SIZE') throw new Error('it is a 1D LUT — only 3D .cube LUTs are supported');
+    else if (key === 'LUT_3D_SIZE') { size = parseInt(p[1], 10); if (!(size >= 2 && size <= 129)) throw new Error('unsupported LUT size ' + p[1]); data = new Float32Array(size * size * size * 3); }
+    else if (key === 'DOMAIN_MIN') min = p.slice(1, 4).map(Number);
+    else if (key === 'DOMAIN_MAX') max = p.slice(1, 4).map(Number);
+    else if (key === 'LUT_3D_INPUT_RANGE') { min = [+p[1], +p[1], +p[1]]; max = [+p[2], +p[2], +p[2]]; }
+  }
+  if (!data) throw new Error('no LUT_3D_SIZE line found — is this a .cube file?');
+  if (n !== data.length) throw new Error('the file is incomplete (' + n / 3 + ' of ' + data.length / 3 + ' entries)');
+  if (data.some(v => v !== v)) throw new Error('the file contains values that are not numbers');
+  return { name: name.replace(/\.cube$/i, '') || title || 'LUT', size, data, min, max };
+}
+const VS = '#version 300 es\nout vec2 uv;void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));uv=vec2(p.x,1.-p.y);gl_Position=vec4(p*2.-1.,0.,1.);}';
+const FS = '#version 300 es\nprecision highp float;precision highp sampler3D;in vec2 uv;out vec4 o;uniform sampler2D uTex;uniform sampler3D uLut;uniform float uN,uK;uniform vec2 uS;uniform vec3 uMin,uMax;' +
+  'void main(){vec2 p=(uv-.5)*uS+.5;if(p.x<0.||p.x>1.||p.y<0.||p.y>1.){o=vec4(0.,0.,0.,1.);return;}vec3 c=texture(uTex,p).rgb;' +
+  'vec3 n=clamp((c-uMin)/max(uMax-uMin,vec3(1e-6)),0.,1.);vec3 g=clamp(texture(uLut,(n*(uN-1.)+.5)/uN).rgb,0.,1.);o=vec4(mix(c,g,uK),1.);}';
+function makeGrader(canvas) {
+  const gl = canvas.getContext('webgl2', { premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: false, alpha: false });
+  if (!gl) return null;
+  const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  gl.useProgram(pr);
+  const U = n => gl.getUniformLocation(pr, n);
+  const u = { N: U('uN'), K: U('uK'), S: U('uS'), Min: U('uMin'), Max: U('uMax') };
+  gl.uniform1i(U('uTex'), 0); gl.uniform1i(U('uLut'), 1);
+  const tex = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  const lt = gl.createTexture(); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D, lt);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_3D, k, v);
+  let cur = null;
+  return {
+    setLut(l) {
+      if (cur === l) return; cur = l;
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D, lt);
+      gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGB16F, l.size, l.size, l.size, 0, gl.RGB, gl.FLOAT, l.data);
+      gl.uniform1f(u.N, l.size); gl.uniform3fv(u.Min, l.min); gl.uniform3fv(u.Max, l.max);
+    },
+    draw(src, k, sx, sy) {
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+      gl.uniform1f(u.K, k); gl.uniform2f(u.S, sx, sy);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    },
+    dispose() { const e = gl.getExtension('WEBGL_lose_context'); if (e) e.loseContext(); },
+  };
+}
+
+/* saved LUTs (IndexedDB; falls back to this-session-only) */
+function lutDb() {
+  return new Promise((res, rej) => {
+    const q = indexedDB.open('insta-export', 1);
+    q.onupgradeneeded = () => q.result.createObjectStore('luts', { keyPath: 'id' });
+    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+  });
+}
+async function lutStore(mode, fn) {
+  try { const db = await lutDb(); return await new Promise((res, rej) => { const tx = db.transaction('luts', mode); const rq = fn(tx.objectStore('luts')); tx.oncomplete = () => res(rq && rq.result); tx.onerror = tx.onabort = () => rej(tx.error); }); }
+  catch (e) { return null; }
+}
+async function loadSavedLuts() {
+  const rows = await lutStore('readonly', s => s.getAll());
+  for (const row of rows || []) { try { LUTS.push(Object.assign(parseCube(row.text, row.name), { id: row.id })); } catch (e) {} }
+  fillLutSelect(); if (info) render();
+}
+async function addLutFiles(files) {
+  const errs = []; let last = '';
+  for (const f of files) {
+    try {
+      if (f.size > 40 * 1024 * 1024) throw new Error('the file is too large to be a .cube LUT');
+      const text = await f.text();
+      const lut = Object.assign(parseCube(text, f.name), { id: 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) });
+      LUTS.push(lut); last = lut.id;
+      lutStore('readwrite', s => s.put({ id: lut.id, name: f.name, text }));
+    } catch (e) { errs.push(f.name + ': ' + e.message); }
+  }
+  if (last) L.id = last;
+  const box = $('lutErr'); box.textContent = errs.length ? 'Couldn\'t add ' + errs.join(' · ') : ''; box.classList.toggle('hidden', !errs.length);
+  fillLutSelect(); render();
+}
+function fillLutSelect() {
+  const sel = $('lutSel');
+  sel.replaceChildren(...[{ id: '', name: 'None' }, ...LUTS].map(l => { const o = el('option', '', l.id ? l.name + ' (' + l.size + '³)' : l.name); o.value = l.id; return o; }));
+  if (!LUTS.find(l => l.id === L.id)) L.id = '';
+  sel.value = L.id;
+}
+
+/* live preview */
+let pvG = null, pvGFailed = false;
+function syncLutUi() {
+  const lut = R && R.lut, has = !!L.id;
+  $('lutK').disabled = !has; $('lutDel').disabled = !has;
+  $('lutVal').textContent = Math.round(L.k * 100) + '%';
+  $('lutHint').textContent = !LUTS.length ? 'Add your own .cube files. They stay saved in this browser for next time.'
+    : has ? 'Look LUTs are made for normal footage. Camera "log to Rec.709" LUTs only suit log footage — lower the power if it looks too strong.'
+    : 'Pick a LUT to see it on the preview. It is baked into the export.';
+  const pv = $('pv'), cv = $('pvc');
+  $('lutbar').classList.toggle('hidden', !has);
+  pv.controls = !has;
+  if (!has) L.compare = false;
+  $('pCmp').setAttribute('aria-pressed', L.compare);
+  if (lut && !pvG && !pvGFailed) { try { pvG = makeGrader(cv); } catch (e) { console.error(e); } if (!pvG) { pvGFailed = true; const b = $('lutErr'); b.textContent = 'This browser can\'t show or apply LUTs (WebGL 2 is unavailable).'; b.classList.remove('hidden'); } }
+  cv.classList.toggle('hidden', !(lut && pvG) || L.compare);
+  drawPreview();
+}
+function drawPreview() {
+  const lut = R && R.lut, pv = $('pv'), cv = $('pvc');
+  if (!lut || !pvG || L.compare || pv.readyState < 2 || !pv.videoWidth) return;
+  const m = 960 / Math.max(R.W, R.H, 960), w = Math.round(R.W * m), h = Math.round(R.H * m);
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const s = pv.videoWidth / pv.videoHeight, d = R.W / R.H, fit = pv.style.objectFit;
+  let sx = 1, sy = 1;
+  if (fit === 'cover') { if (s > d) sx = d / s; else sy = s / d; }
+  else if (fit === 'contain') { if (s > d) sy = s / d; else sx = d / s; }
+  try { pvG.setLut(lut); pvG.draw(pv, L.k, sx, sy); } catch (e) { console.error(e); }
+}
+function initPreview() {
+  const pv = $('pv'), seek = $('pSeek'), play = $('pPlay');
+  if (pv.requestVideoFrameCallback) { const tick = () => { drawPreview(); pv.requestVideoFrameCallback(tick); }; pv.requestVideoFrameCallback(tick); }
+  else { const tick = () => { if (!pv.paused) drawPreview(); requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
+  ['seeked', 'loadeddata', 'canplay'].forEach(t => pv.addEventListener(t, drawPreview));
+  pv.addEventListener('timeupdate', () => { if (pv.duration) seek.value = pv.currentTime / pv.duration * 1000; });
+  const lbl = () => { play.textContent = pv.paused ? 'Play' : 'Pause'; };
+  pv.addEventListener('play', lbl); pv.addEventListener('pause', lbl);
+  const toggle = () => { pv.paused ? pv.play().catch(() => {}) : pv.pause(); };
+  play.addEventListener('click', toggle); $('pvc').addEventListener('click', toggle);
+  seek.addEventListener('input', () => { if (pv.duration) pv.currentTime = seek.value / 1000 * pv.duration; });
+  $('pCmp').addEventListener('click', () => { L.compare = !L.compare; syncLutUi(); });
+  $('lutSel').addEventListener('change', e => { L.id = e.target.value; render(); });
+  $('lutK').addEventListener('input', e => { L.k = e.target.value / 100; render(); });
+  $('lutAdd').addEventListener('click', () => $('lutFile').click());
+  $('lutFile').addEventListener('change', e => { const list = [...e.target.files]; e.target.value = ''; if (list.length) addLutFiles(list); });
+  $('lutDel').addEventListener('click', () => {
+    const i = LUTS.findIndex(l => l.id === L.id); if (i < 0) return;
+    lutStore('readwrite', s => s.delete(L.id)); LUTS.splice(i, 1); L.id = ''; fillLutSelect(); render();
+  });
+}
+
 /* ---------- events ---------- */
 const drop = $('drop'), fileInput = $('file');
 drop.addEventListener('click', () => fileInput.click());
@@ -718,7 +930,11 @@ fileInput.addEventListener('change', () => { loadFile(fileInput.files[0]); fileI
 $('change').addEventListener('click', () => fileInput.click());
 ['dragenter', 'dragover'].forEach(t => window.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(t => window.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
-window.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f && !conversion) loadFile(f); });
+window.addEventListener('drop', e => {
+  const list = e.dataTransfer ? [...e.dataTransfer.files] : []; if (!list.length || conversion) return;
+  const cubes = list.filter(f => /\.cube$/i.test(f.name));
+  if (cubes.length) addLutFiles(cubes); else loadFile(list[0]);
+});
 
 $('mAuto').addEventListener('click', () => { S.auto = true; render(); });
 $('mManual').addEventListener('click', () => {
@@ -738,6 +954,8 @@ $('cancel').addEventListener('click', () => { if (conversion) conversion.cancel(
 $('again').addEventListener('click', () => { showPanel('settings'); render(); });
 window.addEventListener('beforeunload', e => { if (conversion) { e.preventDefault(); e.returnValue = ''; } });
 
+initPreview();
+loadSavedLuts();
 detectCaps();
 })();
 </script>
